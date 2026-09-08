@@ -1,0 +1,30 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="publish">
+  <p>Notion에서 고친 내용을 사이트에 반영합니다. 빌드에 1~2분 걸립니다.</p>
+  <p><button id="go" type="button">publish</button></p>
+  <p id="out" aria-live="polite"></p>
+  <hr />
+  <p><a href="/" target="_blank" rel="noopener">사이트 열기 →</a></p>
+
+  <script is:inline>
+    const go = document.getElementById("go");
+    const out = document.getElementById("out");
+    go.addEventListener("click", async () => {
+      go.disabled = true;
+      out.textContent = "요청 중…";
+      try {
+        const r = await fetch("/api/publish", { method: "POST" });
+        const d = await r.json().catch(() => ({}));
+        out.textContent = r.ok
+          ? `배포 시작됨 ${d.triggered ?? ""} — 1~2분 뒤 새로고침`
+          : `실패: ${d.error ?? r.status}`;
+      } catch (err) {
+        out.textContent = `실패: ${err}`;
+      }
+      // Re-enable after a beat so an impatient double click cannot queue two builds.
+      setTimeout(() => { go.disabled = false; }, 15000);
+    });
+  </script>
+</Base>

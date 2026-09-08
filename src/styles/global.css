@@ -47,3 +47,14 @@ nav a + a::before { content: " · "; }
 .body blockquote { margin: 0; padding-left: 0.75rem; border-left: 1px solid var(--line); }
 
 iframe { width: 560px; max-width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); }
+
+/* Button page, embedded in Notion. Same single size and weight as everything else. */
+button {
+  font: inherit;
+  padding: 0.35rem 0.9rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
