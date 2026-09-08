@@ -1,0 +1,45 @@
+---
+import { getCollection, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const works = await getCollection("works");
+  return works.map((w) => ({ params: { slug: w.id }, props: { work: w } }));
+}
+
+const { work } = Astro.props;
+const { Content } = await render(work);
+const d = work.data;
+
+// Only the id is taken from the URL, so a pasted watch/share/shorts link all work
+// and nothing from Notion reaches the iframe src verbatim.
+const youtube = d.video?.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/)?.[1];
+---
+<Base title={d.title}>
+  <table>
+    <tbody>
+      <tr><th>title</th><td>{d.title}</td></tr>
+      <tr><th>slug</th><td>{work.id}</td></tr>
+      <tr><th>category</th><td>{d.category}</td></tr>
+      <tr><th>date</th><td>{d.date.toISOString().slice(0, 10)}</td></tr>
+      <tr><th>credits</th><td>{d.credits.join(", ") || "—"}</td></tr>
+      <tr><th>summary</th><td>{d.summary ?? "—"}</td></tr>
+      <tr><th>video</th><td>{d.video ? <a href={d.video}>{d.video}</a> : "—"}</td></tr>
+    </tbody>
+  </table>
+
+  {youtube && (
+    <p><iframe
+      src={`https://www.youtube-nocookie.com/embed/${youtube}`}
+      title={`${d.title} video`}
+      allow="encrypted-media; picture-in-picture"
+      allowfullscreen
+      loading="lazy"
+    ></iframe></p>
+  )}
+
+  <hr />
+  <div class="body"><Content /></div>
+  <hr />
+  <p><a href="/">← works</a></p>
+</Base>

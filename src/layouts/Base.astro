@@ -1,0 +1,16 @@
+---
+import "../styles/global.css";
+const { title } = Astro.props;
+---
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title ? `${title} | NAU notion-cms-test` : "NAU notion-cms-test"}</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <nav><a href="/">works</a><a href="/about/">about</a></nav>
+    <slot />
+  </body>
+</html>

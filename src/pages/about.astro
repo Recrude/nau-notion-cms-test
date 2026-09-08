@@ -1,0 +1,13 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="about">
+  <table>
+    <tbody>
+      <tr><th>repo</th><td>notion-cms-test</td></tr>
+      <tr><th>source</th><td>Notion database "NAU Works"</td></tr>
+      <tr><th>pipeline</th><td>notion → npm run sync → src/content/works/*.md → astro build</td></tr>
+      <tr><th>note</th><td>styling intentionally omitted; this is a plumbing test, not a design</td></tr>
+    </tbody>
+  </table>
+</Base>

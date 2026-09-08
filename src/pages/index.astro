@@ -1,0 +1,40 @@
+---
+import { getCollection } from "astro:content";
+import { Image } from "astro:assets";
+import Base from "../layouts/Base.astro";
+
+// Order is an explicit property because Notion's own view sort never reaches the
+// API; Date is the tiebreak.
+const works = (await getCollection("works")).sort(
+  (a, b) =>
+    (a.data.order ?? Infinity) - (b.data.order ?? Infinity) ||
+    b.data.date.getTime() - a.data.date.getTime()
+);
+const iso = (d) => d.toISOString().slice(0, 10);
+---
+<Base>
+  <p class="meta">works: {works.length} · synced from Notion</p>
+  <table>
+    <thead>
+      <tr>
+        <th>order</th><th>cover</th><th>title</th><th>slug</th>
+        <th>category</th><th>date</th><th>credits</th><th>video</th>
+      </tr>
+    </thead>
+    <tbody>
+      {works.map((w) => (
+        <tr>
+          <td>{w.data.order ?? ""}</td>
+          <td>{w.data.cover && <Image src={w.data.cover} alt="" widths={[240]} sizes="120px" loading="lazy" />}</td>
+          <td><a href={`/works/${w.id}/`}>{w.data.title}</a></td>
+          <td>{w.id}</td>
+          <td>{w.data.category}</td>
+          <td>{iso(w.data.date)}</td>
+          <td>{w.data.credits.join(", ")}</td>
+          <td>{w.data.video && <a href={w.data.video}>link</a>}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  {works.length === 0 && <p>no published rows. set Status = Published in Notion, then run sync.</p>}
+</Base>
