@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { childBlocks, queryAll, SUPPORTED_BLOCKS } from "./notion.mjs";
-import { plain, rich, frontmatter, SLUG_RE } from "./md.mjs";
+import { plain, rich, frontmatter, SLUG_RE, looksLikeImage } from "./md.mjs";
 
 const DB = process.env.NOTION_DB_ID;
 if (!DB) {
@@ -54,6 +54,20 @@ async function download(url, pageUrl) {
     return null;
   }
   const buf = Buffer.from(await res.arrayBuffer());
+
+  // A truncated download is the worst case here: the bytes hash differently, so
+  // the file lands under a new name, and the half-image fails the image pipeline
+  // much later with an error that points at the file rather than at Notion.
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared && declared !== buf.length) {
+    fail(pageUrl, `asset download truncated: got ${buf.length} of ${declared} bytes — ${url.split("?")[0]}`);
+    return null;
+  }
+  if (!looksLikeImage(buf)) {
+    fail(pageUrl, `asset is not a readable image (${buf.length} bytes) — ${url.split("?")[0]}`);
+    return null;
+  }
+
   const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
   const type = res.headers.get("content-type") ?? "";
   const ext =

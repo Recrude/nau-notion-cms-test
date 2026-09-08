@@ -35,6 +35,19 @@ export function frontmatter(obj, notionUrl) {
   return lines.join("\n");
 }
 
+// Magic bytes for the formats Notion serves. A truncated or error-page response
+// fails this before it can reach the build as an unreadable image.
+export function looksLikeImage(b) {
+  if (b.length < 12) return false;
+  const ascii = b.subarray(0, 5).toString("latin1");
+  if (ascii.startsWith("GIF87") || ascii.startsWith("GIF89")) return b.subarray(-1)[0] === 0x3b; // trailer
+  if (b[0] === 0xff && b[1] === 0xd8) return b[b.length - 2] === 0xff && b[b.length - 1] === 0xd9; // JPEG EOI
+  if (b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+    return b.subarray(-8, -4).toString("latin1") === "IEND";
+  if (ascii.startsWith("RIFF") && b.subarray(8, 12).toString("latin1") === "WEBP") return true;
+  if (b.subarray(0, 200).toString("latin1").includes("<svg")) return true;
+  return false;
+}
 // --- self-check ------------------------------------------------------------
 function demo() {
   const t = (text, annotations = {}, href = null) => ({ plain_text: text, annotations, href });
@@ -61,6 +74,24 @@ function demo() {
   assert.equal(frontmatter({ title: "T", summary: "", credits: [] }, "u").includes("summary"), false);
   // Korean and quotes survive the round trip through JSON quoting.
   assert.match(frontmatter({ title: '기아 "EV9"' }, "u"), /title: "기아 \\"EV9\\""/);
+
+  // Image integrity: a complete file passes, a truncated one must not. Truncation
+  // is the failure that otherwise reaches the build as an unreadable image.
+  const gif = Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(20), Buffer.from([0x3b])]);
+  assert.ok(looksLikeImage(gif));
+  assert.ok(!looksLikeImage(gif.subarray(0, gif.length - 1)));       // trailer lost
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(20), Buffer.from("IEND"), Buffer.alloc(4),
+  ]);
+  assert.ok(looksLikeImage(png));
+  assert.ok(!looksLikeImage(png.subarray(0, 30)));
+  const jpg = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(20), Buffer.from([0xff, 0xd9])]);
+  assert.ok(looksLikeImage(jpg));
+  assert.ok(!looksLikeImage(jpg.subarray(0, jpg.length - 2)));
+  assert.ok(looksLikeImage(Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>')));
+  // An HTML error page served with an image content-type must not pass.
+  assert.ok(!looksLikeImage(Buffer.from("<!doctype html><html><body>403 Forbidden</body></html>")));
 
   console.log("md.mjs: all checks passed");
 }
