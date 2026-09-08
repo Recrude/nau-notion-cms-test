@@ -1,4 +1,9 @@
-node_modules/
-dist/
 .astro/
 .env
+.env*
+.env.local
+.vercel
+.vercel/
+dist/
+node_modules/
+!.env.example

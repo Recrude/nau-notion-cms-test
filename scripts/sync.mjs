@@ -19,7 +19,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const CONTENT = path.join(ROOT, "src/content/works");
 const ASSETS = path.join(ROOT, "src/assets/notion");
 const LOCK = path.join(ROOT, "content.lock.json");
-const REDIRECTS = path.join(ROOT, "public/_redirects");
+const VERCEL_JSON = path.join(ROOT, "vercel.json");
 
 const errors = [];
 const fail = (pageUrl, msg) => errors.push(`${msg}\n    ${pageUrl}`);
@@ -195,21 +195,28 @@ for (const f of await fs.readdir(ASSETS).catch(() => [])) {
 }
 
 // A slug that changed leaves a live URL pointing at nothing, so emit a redirect.
+// These go in vercel.json: the `_redirects` file is Netlify/Cloudflare syntax and
+// Vercel ignores it silently, which would make the rules look present but dead.
 const redirects = [];
 for (const [id, prev] of Object.entries(lock)) {
   const now = nextLock[id];
-  if (now && now.slug !== prev.slug) redirects.push(`/works/${prev.slug} /works/${now.slug} 301`);
+  if (now && now.slug !== prev.slug) redirects.push({ source: `/works/${prev.slug}`, destination: `/works/${now.slug}`, permanent: true });
   if (!now) console.warn(`  unpublished: /works/${prev.slug} (no redirect target — add one by hand if it was public)`);
 }
-await fs.mkdir(path.dirname(REDIRECTS), { recursive: true });
-const existing = await fs.readFile(REDIRECTS, "utf8").catch(() => "");
+
+// Only the `redirects` key is owned by sync; everything else in vercel.json is
+// hand-maintained and must survive.
+const vercel = await fs.readFile(VERCEL_JSON, "utf8").then(JSON.parse).catch(() => ({}));
 const live = new Set([...slugs.keys()].map((s) => `/works/${s}`));
-const merged = [...new Set([...existing.split("\n"), ...redirects].map((l) => l.trim()).filter(Boolean))]
-  // Drop rules whose destination no longer exists: a 301 into a 404 is worse
-  // than the 404 alone, and stale rules accumulate every time a slug changes.
-  .filter((l) => live.has(l.split(/\s+/)[1]))
-  .sort();
-await fs.writeFile(REDIRECTS, merged.length ? `${merged.join("\n")}\n` : "");
+const byPath = new Map();
+for (const r of [...(vercel.redirects ?? []), ...redirects]) byPath.set(r.source, r);
+vercel.redirects = [...byPath.values()]
+  // Drop rules whose destination no longer exists: a 301 into a 404 is worse than
+  // the 404 alone, and stale rules accumulate every time a slug changes.
+  .filter((r) => live.has(r.destination))
+  .sort((a, b) => a.source.localeCompare(b.source));
+if (!vercel.redirects.length) delete vercel.redirects;
+await fs.writeFile(VERCEL_JSON, `${JSON.stringify(vercel, null, 2)}\n`);
 
 if (errors.length) {
   console.error(`\n${errors.length} content error(s):\n`);
