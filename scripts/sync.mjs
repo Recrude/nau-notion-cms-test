@@ -48,36 +48,57 @@ function prop(page, name) {
 // of the URL: the URL carries a fresh signature on every sync and would produce a
 // new filename each run, inflating the repo and churning the diff.
 async function download(url, pageUrl) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    fail(pageUrl, `asset download failed (${res.status}): ${url.split("?")[0]}`);
-    return null;
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
+  // Hosts serving these images rate-limit or reject datacentre traffic: a build
+  // runner can get a short error body carrying an image content-type, which is
+  // why the response is verified rather than trusted, and why a bad one is
+  // retried before it is reported.
+  let last = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
 
-  // A truncated download is the worst case here: the bytes hash differently, so
-  // the file lands under a new name, and the half-image fails the image pipeline
-  // much later with an error that points at the file rather than at Notion.
-  const declared = Number(res.headers.get("content-length") ?? 0);
-  if (declared && declared !== buf.length) {
-    fail(pageUrl, `asset download truncated: got ${buf.length} of ${declared} bytes — ${url.split("?")[0]}`);
-    return null;
-  }
-  if (!looksLikeImage(buf)) {
-    fail(pageUrl, `asset is not a readable image (${buf.length} bytes) — ${url.split("?")[0]}`);
-    return null;
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+          Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        },
+      });
+    } catch (err) {
+      last = `request failed: ${err}`;
+      continue;
+    }
+    if (!res.ok) {
+      last = `HTTP ${res.status}`;
+      continue;
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer());
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared && declared !== buf.length) {
+      last = `truncated: got ${buf.length} of ${declared} bytes`;
+      continue;
+    }
+    if (!looksLikeImage(buf)) {
+      last = `not a readable image (${buf.length} bytes)`;
+      continue;
+    }
+
+    const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
+    const type = res.headers.get("content-type") ?? "";
+    const ext =
+      { "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
+        "image/webp": ".webp", "image/svg+xml": ".svg" }[type.split(";")[0]] ??
+      (path.extname(new URL(url).pathname) || ".bin");
+    const name = `${hash}${ext}`;
+    await fs.writeFile(path.join(ASSETS, name), buf);
+    return name;
   }
 
-  const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
-  const type = res.headers.get("content-type") ?? "";
-  const ext =
-    { "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
-      "image/webp": ".webp", "image/svg+xml": ".svg" }[type.split(";")[0]] ??
-    (path.extname(new URL(url).pathname) || ".bin");
-  const name = `${hash}${ext}`;
-  await fs.writeFile(path.join(ASSETS, name), buf);
-  return name;
+  fail(pageUrl, `asset download failed after 3 tries (${last}) — ${url.split("?")[0]}`);
+  return null;
 }
+
 
 // --- blocks -> markdown ----------------------------------------------------
 async function toMarkdown(blocks, ctx, depth = 0) {
