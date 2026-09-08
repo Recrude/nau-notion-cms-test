@@ -70,6 +70,52 @@ node scripts/md.mjs   # frontmatter 멱등성 · 마크다운 이스케이프 ·
 npm run build         # zod 스키마 = 계약서. 위반 시 빌드 실패
 ```
 
+## 배포 & 버튼
+
+`npm run build`은 **git에 커밋된** 콘텐츠로 빌드하고, `npm run build:notion`은
+빌드 직전에 Notion에서 다시 당겨온다. 같은 repo를 두 개의 Vercel 프로젝트로
+붙이면 두 성질을 동시에 갖는다.
+
+| | 빌드 커맨드 | 트리거 | 성격 |
+|---|---|---|---|
+| **staging** | `npm run build:notion` | Notion 버튼 → Deploy Hook | 누르면 즉시 반영. 편집자 확인용 |
+| **production** | `npm run build` | main에 merge | PR 게이트. 실제 게시 |
+
+두 프로젝트 모두 환경변수에 `NOTION_TOKEN`, `NOTION_DB_ID`가 필요하다
+(production은 sync를 안 돌리므로 없어도 되지만, 넣어두면 커맨드를 바꿔 쓸 수 있다).
+
+### Notion 버튼으로 배포 트리거
+
+Notion의 **Send webhook** 액션은 버튼·데이터베이스 버튼·데이터베이스 자동화에서
+쓸 수 있다. **유료 플랜 한정, POST만, 커스텀 헤더 지원.**
+
+가장 단순한 경로 — 인증이 필요 없다:
+
+1. Vercel → staging 프로젝트 → Settings → Git → Deploy Hooks → 생성 → URL 복사
+2. Notion DB 상단에 버튼 블록 추가 → Add action → **Send webhook** → URL 붙여넣기
+3. 편집자가 버튼을 누르면 Vercel이 `sync + build`를 돌리고 staging URL이 갱신된다
+
+Deploy Hook URL 자체가 곧 권한이다. 아는 사람은 누구나 재배포를 걸 수 있다.
+재배포만 가능하고 콘텐츠를 바꾸지는 못하므로 감수할 만하지만, 공개 페이지에
+버튼을 두지는 말 것.
+
+### production까지 버튼으로 하려면 (릴레이 필요)
+
+GitHub Actions를 직접 부르려면 `Authorization: Bearer <PAT>` 헤더가 필요한데,
+**그 PAT를 Notion 버튼 설정에 넣으면 Notion 편집 권한자 전원이 볼 수 있다.**
+repo 쓰기 권한이 그대로 새는 셈이라 하면 안 된다.
+
+대신 토큰을 서버에 두는 릴레이를 한 단계 끼운다:
+
+```
+Notion 버튼  →  /api/publish (Vercel function, 공유 시크릿 헤더 검증)
+             →  GitHub workflow_dispatch  →  Sync from Notion  →  PR
+```
+
+릴레이는 20줄 남짓이고 GitHub 토큰은 Vercel 환경변수에만 존재한다.
+Notion 쪽에는 이 릴레이용 시크릿만 들어가고, 그게 유출돼도 할 수 있는 건
+"PR을 하나 더 만드는 것"뿐이다.
+
 ## 아직 안 한 것
 
 - **ko/en 이중언어.** 현행 사이트는 WPML로 돌고 있다. Notion 스키마와 Astro 라우팅이
@@ -80,4 +126,6 @@ npm run build         # zod 스키마 = 계약서. 위반 시 빌드 실패
   최대 성능 변수다 — 이미지 최적화보다 이게 먼저다.
 - **증분 sync.** 페이지 200개 미만이면 전체 재sync가 몇 분이라 불필요.
   에셋만 `content.lock.json`의 `last_edited_time`으로 재다운로드를 건너뛴다.
-- **Pagefind 검색, 애널리틱스, Cloudflare Pages 연결.**
+- **Pagefind 검색, 애널리틱스.**
+- **디자인.** 지금 화면은 의도적으로 스타일이 없다 — 배관 테스트지 디자인 시안이 아니다.
+  폰트·크기·두께 전부 1종, 인덱스는 DB 뷰 그대로의 표.
